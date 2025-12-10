@@ -7,99 +7,87 @@ from fastapi.middleware.cors import CORSMiddleware
 # ----------------------------------------------------------
 # FastAPI application setup
 # ----------------------------------------------------------
-app = FastAPI(title="Qwen Image Edit Backend")
+app = FastAPI(title="Qwen Weather Edit Backend")
 
-# Allow cross-origin requests so your frontend website
-# (e.g., GitHub Pages) can call this backend API.
+# Allow frontend (GitHub Pages / local) to call backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Allow all origins (simple for deployment)
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Use DashScope Singapore region endpoint
+# DashScope international endpoint (Singapore region)
 dashscope.base_http_api_url = "https://dashscope-intl.aliyuncs.com/api/v1"
 
-# Read the API key from environment variable
+# Read API key from Render's environment variables
 API_KEY = os.getenv("DASHSCOPE_API_KEY")
 
 
 # ----------------------------------------------------------
-# Main API endpoint: /api/edit
-# - Accepts an uploaded image
-# - Accepts a text editing prompt
-# - Sends both to Qwen Image Edit model
-# - Returns a generated image URL
+# POST /api/edit
+# Accepts:  (1) image file  (2) text prompt
+# Returns:  URL of edited image
 # ----------------------------------------------------------
 @app.post("/api/edit")
 async def edit_image(
-    prompt: str = Form(...),         # Editing instruction (text)
-    file: UploadFile = File(...),    # Image uploaded by user
+    prompt: str = Form(...),
+    file: UploadFile = File(...)
 ):
-    # Ensure API key exists
+    # Check for API key
     if not API_KEY:
         return {
             "success": False,
-            "error": "DASHSCOPE_API_KEY is missing. Please set the environment variable."
+            "error": "DASHSCOPE_API_KEY is missing from environment variables."
         }
 
-    # Read the raw image bytes directly
-    # This avoids the size limits of data-URI and base64 encoding
+    # Read uploaded image bytes
     image_bytes = await file.read()
 
-    # Build DashScope multimodal input format
+    # IMPORTANT:
+    # qwen-image-edit expects the image content directly as bytes,
+    # NOT a dict with {"type": ..., "data": ...}
     messages = [
         {
             "role": "user",
             "content": [
-                {
-                    # Provide the raw uploaded image directly
-                    "image": {
-                        "type": "input_image",
-                        "data": image_bytes
-                    }
-                },
-                {
-                    # Editing prompt provided by the user
-                    "text": prompt
-                }
+                { "image": image_bytes },   # <-- Correct format
+                { "text": prompt }
             ]
         }
     ]
 
-    # Call Qwen Image Edit model from DashScope
+    # Call DashScope API
     response = MultiModalConversation.call(
         api_key=API_KEY,
         model="qwen-image-edit",
         messages=messages,
-        stream=False,     # Non-streaming output
-        n=1,              # Number of output images
+        stream=False,
+        n=1,
         watermark=False,
-        prompt_extend=True,
+        prompt_extend=True
     )
 
-    # If request succeeded
+    # Success
     if response.status_code == 200:
-        # Extract the generated image URL from the response
-        generated_image_url = response.output.choices[0].message.content[0]["image"]
-
+        output_image_url = response.output.choices[0].message.content[0]["image"]
         return {
             "success": True,
-            "image_url": generated_image_url
+            "image_url": output_image_url
         }
 
-    # If failed, return error details
+    # Error response
     return {
         "success": False,
         "status_code": response.status_code,
-        "error_message": response.message,
+        "error_message": response.message
     }
 
 
 # ----------------------------------------------------------
-# Health check endpoint for Render/Railway
+# GET /health
+# Used by Render to verify the service is alive
 # ----------------------------------------------------------
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return { "status": "ok" }
