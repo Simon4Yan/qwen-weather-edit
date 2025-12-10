@@ -108,7 +108,7 @@
   </button>
 
   <!-- Foggy -->
-  <button onclick="setPrompt(`Change the scene to foggy weather while preserving all objects and layout exactly the same. Remove every trace of the previous weather, including sunlight, clear sky tint, strong shadows, and high-contrast reflections. Replace them with dense fog, reduced visibility, softened global lighting, desaturated colors, and uniform atmospheric scattering. Keep the image resolution and sharpness level identical to the original without adding extra details. Only the weather should change.`)">
+  <button onclick="setPrompt(`Change the scene to a realistic foggy environment and completely remove all traces of the original weather, including direct sunlight, sharp shadows, bright reflections, and high contrast. Replace them with soft, diffused ambient lighting, low-contrast tones, reduced visibility, and natural atmospheric scattering so that distant objects appear faded and the entire scene has consistent fog density. Keep all objects, layout, geometry, and resolution unchanged, and modify only the lighting and atmosphere to match real, dense morning fog.`)">
     🌫 Foggy
   </button>
 
@@ -156,6 +156,7 @@
 
 <script>
   const API_BASE = "https://qwen-weather-edit.onrender.com";
+  // const API_BASE = "http://localhost:10000";
 
   function setPrompt(text) {
     document.getElementById("prompt").value = text;
