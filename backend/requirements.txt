@@ -1,0 +1,6 @@
+
+fastapi
+uvicorn
+python-multipart
+dashscope>=1.20.7
+requests
