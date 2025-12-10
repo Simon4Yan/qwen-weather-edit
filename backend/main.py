@@ -1,133 +1,105 @@
 import os
-import base64
-from typing import Optional
-
 import dashscope
 from dashscope import MultiModalConversation
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 
-# ======================
-# 基本配置
-# ======================
+# ----------------------------------------------------------
+# FastAPI application setup
+# ----------------------------------------------------------
+app = FastAPI(title="Qwen Image Edit Backend")
 
-app = FastAPI(title="Qwen Image Edit (DashScope)")
-
-# 允许前端跨域访问（本地开发简单粗暴允许全部）
+# Allow cross-origin requests so your frontend website
+# (e.g., GitHub Pages) can call this backend API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],   # Allow all origins (simple for deployment)
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 使用新加坡区域的 DashScope 接口
+# Use DashScope Singapore region endpoint
 dashscope.base_http_api_url = "https://dashscope-intl.aliyuncs.com/api/v1"
 
-# 从环境变量读取 DashScope API Key
-# 注意：这里用的是 DASHSCOPE_API_KEY（你之前用的那个）
-DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+# Read the API key from environment variable
+API_KEY = os.getenv("DASHSCOPE_API_KEY")
 
 
-def get_mime_type(file: UploadFile) -> str:
-    """根据上传的文件类型推断 MIME 类型，默认用 image/png。"""
-    if file.content_type and file.content_type.startswith("image/"):
-        return file.content_type
-    # fallback
-    return "image/png"
-
-
+# ----------------------------------------------------------
+# Main API endpoint: /api/edit
+# - Accepts an uploaded image
+# - Accepts a text editing prompt
+# - Sends both to Qwen Image Edit model
+# - Returns a generated image URL
+# ----------------------------------------------------------
 @app.post("/api/edit")
 async def edit_image(
-    prompt: str = Form(...),
-    file: UploadFile = File(...),
-    n: int = Form(1),  # 生成图片数量，默认 1 张
+    prompt: str = Form(...),         # Editing instruction (text)
+    file: UploadFile = File(...),    # Image uploaded by user
 ):
-    """
-    前端调这个接口：
-    - 上传图片 + prompt
-    - 调用 qwen-image-edit
-    - 返回生成图片的 URL
-    """
-
-    if not DASHSCOPE_API_KEY:
+    # Ensure API key exists
+    if not API_KEY:
         return {
             "success": False,
-            "error": "后端未配置 DASHSCOPE_API_KEY 环境变量，请先 export/setx 后重启服务。",
+            "error": "DASHSCOPE_API_KEY is missing. Please set the environment variable."
         }
 
-    # 1. 读取上传图片字节
+    # Read the raw image bytes directly
+    # This avoids the size limits of data-URI and base64 encoding
     image_bytes = await file.read()
 
-    # 2. 转成 base64 + data URL（DashScope multimodal 支持 data:image;base64,...）
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
-    mime = get_mime_type(file)
-    image_data_url = f"data:{mime};base64,{b64}"
-
-    # 3. 构造 DashScope 消息格式
-    # 参考你之前的写法，只是把 image 从 URL 换成 data URL
+    # Build DashScope multimodal input format
     messages = [
         {
             "role": "user",
             "content": [
-                {"image": image_data_url},
                 {
-                    "text": prompt,
+                    # Provide the raw uploaded image directly
+                    "image": {
+                        "type": "input_image",
+                        "data": image_bytes
+                    }
                 },
-            ],
+                {
+                    # Editing prompt provided by the user
+                    "text": prompt
+                }
+            ]
         }
     ]
 
-    try:
-        # 4. 调用 DashScope qwen-image-edit
-        response = MultiModalConversation.call(
-            api_key=DASHSCOPE_API_KEY,
-            model="qwen-image-edit",
-            messages=messages,
-            stream=False,
-            n=n,
-            watermark=False,
-            # 你可以在这里传 negative_prompt
-            # negative_prompt="no extra sunlight, no resolution change",
-            prompt_extend=True,
-        )
+    # Call Qwen Image Edit model from DashScope
+    response = MultiModalConversation.call(
+        api_key=API_KEY,
+        model="qwen-image-edit",
+        messages=messages,
+        stream=False,     # Non-streaming output
+        n=1,              # Number of output images
+        watermark=False,
+        prompt_extend=True,
+    )
 
-        if response.status_code == 200:
-            # qwen-image-edit 的返回结构：
-            # response.output.choices[0].message.content 是一个列表
-            # 每个元素都是 {"image": "<url>"}
-            images = [
-                c["image"] for c in response.output.choices[0].message.content
-                if "image" in c
-            ]
-            if not images:
-                return {
-                    "success": False,
-                    "error": "调用成功但未返回图片 URL，请检查响应结构。",
-                }
+    # If request succeeded
+    if response.status_code == 200:
+        # Extract the generated image URL from the response
+        generated_image_url = response.output.choices[0].message.content[0]["image"]
 
-            # 默认只用第一张
-            return {
-                "success": True,
-                "image_url": images[0],
-                "all_image_urls": images,
-            }
-
-        # 非 200，返回错误信息
         return {
-            "success": False,
-            "status_code": response.status_code,
-            "error_code": response.code,
-            "error_message": response.message,
+            "success": True,
+            "image_url": generated_image_url
         }
 
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"调用 DashScope 失败: {e}",
-        }
+    # If failed, return error details
+    return {
+        "success": False,
+        "status_code": response.status_code,
+        "error_message": response.message,
+    }
 
 
+# ----------------------------------------------------------
+# Health check endpoint for Render/Railway
+# ----------------------------------------------------------
 @app.get("/health")
-async def health():
+def health():
     return {"status": "ok"}
