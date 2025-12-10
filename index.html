@@ -34,6 +34,24 @@
       margin-right: 8px;
     }
 
+    /* sample images */
+    .sample-images {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .sample-images img {
+      width: 160px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 2px solid #ddd;
+      transition: 0.2s;
+    }
+    .sample-images img:hover {
+      border-color: #007bff;
+      transform: scale(1.03);
+    }
+
     /* image layout */
     #result-wrapper {
       margin-top: 24px;
@@ -63,7 +81,8 @@
       display: none;
       z-index: 9999;
       left: 0; top: 0;
-      width: 100vw; height: 100vh;
+      width: 100vw;
+      height: 100vh;
       background: rgba(0,0,0,0.85);
       justify-content: center;
       align-items: center;
@@ -84,9 +103,28 @@
 ">
   Driving Weather Condition Change (Qwen API)
 </h1>
+
+<!-- Upload Section -->
 <div class="row">
   <div class="label">1. Upload image:</div>
   <input type="file" id="image" accept="image/*" />
+</div>
+
+<!-- Sample Images -->
+<div class="row">
+  <div class="label">Or choose a sample image:</div>
+  <div class="sample-images">
+
+    <img src="https://raw.githubusercontent.com/Simon4Yan/qwen-weather-edit/main/samples/image1.jpg"
+         onclick="loadSampleImage(this.src)" />
+
+    <img src="https://raw.githubusercontent.com/Simon4Yan/qwen-weather-edit/main/samples/image2.jpg"
+         onclick="loadSampleImage(this.src)" />
+
+    <img src="https://raw.githubusercontent.com/Simon4Yan/qwen-weather-edit/main/samples/image3.jpg"
+         onclick="loadSampleImage(this.src)" />
+
+  </div>
 </div>
 
 <div class="row">
@@ -98,36 +136,30 @@
   />
 </div>
 
-<!-- Predefined prompt buttons -->
+<!-- Preset Weather Buttons -->
 <div class="row">
   <div class="label">Or choose a preset weather condition:</div>
 
-  <!-- Rainy -->
   <button onclick="setPrompt(`Change the scene to rainy weather while keeping all objects and layout identical. Completely remove all traces of the original weather, including sunlight, blue sky, strong shadows, warm highlights, or dry road surfaces. Replace them with fully rainy conditions: overcast gray lighting, wet reflective roads, rain streaks, dark clouds, and increased atmospheric moisture. Maintain the exact original resolution and detail level without adding new textures or upscaling. Only modify the weather.`)">
     🌧 Rainy
   </button>
 
-  <!-- Foggy -->
   <button onclick="setPrompt(`Change the scene to foggy weather while preserving all objects and layout exactly the same. Remove every trace of the previous weather, including sunlight, clear sky tint, strong shadows, and high-contrast reflections. Replace them with dense fog, reduced visibility, softened global lighting, desaturated colors, and uniform atmospheric scattering. Keep the image resolution and sharpness level identical to the original without adding extra details. Only the weather should change.`)">
     🌫 Foggy
   </button>
 
-  <!-- Snowy -->
   <button onclick="setPrompt(`Change the scene to snowy weather while keeping all objects, geometry, and viewpoint unchanged. Remove all previous-weather artifacts such as sunlight, dry ground, warm tones, clear sky, or directional shadows. Replace them with overcast cold lighting, falling snow particles, snow accumulation on surfaces, and a winter atmospheric tone. Keep the exact same resolution and detail density as the original and do not introduce new structures.`)">
     ❄ Snowy
   </button>
 
-  <!-- Overcast -->
   <button onclick="setPrompt(`Change the scene to fully overcast weather while preserving all objects and layout. Remove all signs of direct sunlight, blue sky, strong shadows, and warm highlights. Use soft gray ambient lighting, uniformly lit surfaces, and a slightly desaturated atmosphere. Maintain the original image resolution and detail level without enhancing or adding new details. Only change the global lighting and sky condition.`)">
     ☁ Overcast
   </button>
 
-  <!-- Night-time -->
   <button onclick="setPrompt(`Convert the scene to night-time while preserving all objects and layout. Remove all previous daytime weather cues such as sunlight, bright sky, and hard shadows. Replace them with realistic night illumination: low ambient light, cool tones, car headlights and streetlights as primary light sources, and a dark sky. Do not modify the resolution, texture density, or introduce new scene objects; only update the lighting and atmosphere.`)">
     🌙 Night-time
   </button>
 
-  <!-- Heavy Rain -->
   <button onclick="setPrompt(`Make the weather heavy rain while keeping all scene content and layout identical. Eliminate all traces of the previous weather, including sunlight, blue sky, strong shadows, and dry roads. Replace them with dark, overcast lighting, intense rainfall, wet and reflective road surfaces, visible rain streaks, and heavy clouds. Maintain the exact same image resolution, texture level, and sharpness as the original without any upscaling or extra detail generation.`)">
     🌧 Heavy Rain
   </button>
@@ -149,7 +181,7 @@
   </div>
 </div>
 
-<!-- Zoom modal -->
+<!-- Zoom Modal -->
 <div id="zoomModal" onclick="closeZoom()">
   <img id="zoomedImg" />
 </div>
@@ -161,11 +193,24 @@
     document.getElementById("prompt").value = text;
   }
 
+  async function loadSampleImage(url) {
+    const res = await fetch(url);
+    const blob = await res.blob();
+
+    // Show preview
+    document.getElementById("original").src = URL.createObjectURL(blob);
+
+    // Convert blob → File
+    const file = new File([blob], "sample.jpg", { type: blob.type });
+
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById("image").files = dt.files;
+  }
+
   function zoom(img) {
-    const modal = document.getElementById("zoomModal");
-    const zoomImg = document.getElementById("zoomedImg");
-    zoomImg.src = img.src;
-    modal.style.display = "flex";
+    document.getElementById("zoomedImg").src = img.src;
+    document.getElementById("zoomModal").style.display = "flex";
   }
 
   function closeZoom() {
@@ -183,7 +228,7 @@
     const prompt = promptInput.value.trim();
 
     if (!file) {
-      alert("Please select an image.");
+      alert("Please select an image or a sample.");
       return;
     }
     if (!prompt) {
@@ -191,7 +236,7 @@
       return;
     }
 
-    // preview
+    // preview uploaded file
     const reader = new FileReader();
     reader.onload = (e) => {
       originalImg.src = e.target.result;
@@ -221,7 +266,7 @@
       statusEl.textContent = "Done ✅";
     } catch (err) {
       console.error(err);
-      statusEl.textContent = "Backend error. Is FastAPI running?";
+      statusEl.textContent = "Backend error.";
     }
   }
 </script>
