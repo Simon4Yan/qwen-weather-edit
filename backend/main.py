@@ -4,12 +4,9 @@ from dashscope import MultiModalConversation
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 
-# ----------------------------------------------------------
-# FastAPI application setup
-# ----------------------------------------------------------
-app = FastAPI(title="Qwen Weather Edit Backend")
+app = FastAPI()
 
-# Allow frontend (GitHub Pages / local) to call backend
+# CORS for frontend calls
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,47 +14,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# DashScope international endpoint (Singapore region)
 dashscope.base_http_api_url = "https://dashscope-intl.aliyuncs.com/api/v1"
-
-# Read API key from Render's environment variables
 API_KEY = os.getenv("DASHSCOPE_API_KEY")
 
 
-# ----------------------------------------------------------
-# POST /api/edit
-# Accepts:  (1) image file  (2) text prompt
-# Returns:  URL of edited image
-# ----------------------------------------------------------
 @app.post("/api/edit")
 async def edit_image(
     prompt: str = Form(...),
     file: UploadFile = File(...)
 ):
-    # Check for API key
     if not API_KEY:
-        return {
-            "success": False,
-            "error": "DASHSCOPE_API_KEY is missing from environment variables."
-        }
+        return {"success": False, "error": "Missing DASHSCOPE_API_KEY"}
 
-    # Read uploaded image bytes
-    image_bytes = await file.read()
+    # ---- FIX: always enforce bytes ----
+    raw = await file.read()
+    if isinstance(raw, str):
+        raw = raw.encode("utf-8")
 
-    # IMPORTANT:
-    # qwen-image-edit expects the image content directly as bytes,
-    # NOT a dict with {"type": ..., "data": ...}
+    image_bytes = raw  # ensure bytes only
+
+    # Correct Qwen Image Edit Format
     messages = [
         {
             "role": "user",
             "content": [
-                { "image": image_bytes },   # <-- Correct format
+                { "image": image_bytes },   # <-- MUST be bytes
                 { "text": prompt }
             ]
         }
     ]
 
-    # Call DashScope API
     response = MultiModalConversation.call(
         api_key=API_KEY,
         model="qwen-image-edit",
@@ -68,15 +54,10 @@ async def edit_image(
         prompt_extend=True
     )
 
-    # Success
     if response.status_code == 200:
-        output_image_url = response.output.choices[0].message.content[0]["image"]
-        return {
-            "success": True,
-            "image_url": output_image_url
-        }
+        url = response.output.choices[0].message.content[0]["image"]
+        return {"success": True, "image_url": url}
 
-    # Error response
     return {
         "success": False,
         "status_code": response.status_code,
@@ -84,10 +65,6 @@ async def edit_image(
     }
 
 
-# ----------------------------------------------------------
-# GET /health
-# Used by Render to verify the service is alive
-# ----------------------------------------------------------
 @app.get("/health")
 def health():
-    return { "status": "ok" }
+    return {"status": "ok"}
